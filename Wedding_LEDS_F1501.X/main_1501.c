@@ -5,16 +5,15 @@
  * Created on July 9, 2015, 8:49 PM
  */
 
+ 
+ 
+ /******************************** Includes **********************************/
 #include <stdio.h>
 #include <stdlib.h>
 #include <xc.h>
-/*
- *
- *
- *
- *
- */
 
+
+ /******************************** Pragma's **********************************/
 // CONFIG1
 #pragma config FOSC = INTOSC    // Oscillator Selection Bits (INTOSC oscillator: I/O function on CLKIN pin)
 #pragma config WDTE = OFF       // Watchdog Timer Enable (WDT disabled)
@@ -31,64 +30,66 @@
 #pragma config LPBOR = ON       // Low-Power Brown Out Reset (Low-Power BOR is enabled)
 #pragma config LVP = ON         // Low-Voltage Programming Enable (Low-voltage programming enabled)
 
+#define _XTAL_FREQ  16000000    // this is used by the __delay_ms(xx) and __delay_us(xx) functions
 
-#define _XTAL_FREQ  16000000        // this is used by the __delay_ms(xx) and __delay_us(xx) functions
-
+//Delay function to wait for LED changes.
 #define DELAY(ms)   do { int i; for (i = 0; i < (ms << 9); i++) { asm ("nop"); } } while(0);
 
+/******************************** function #defines **********************************/
+//Similar to an ENUM, but we are using bit wise manipulation 
+#define RED 1        // 0b0001 
+#define BLUE 2       // 0b0010
+#define GREEN 4      // 0b0100
 
-#define RED 1
-#define BLUE 2
-#define GREEN 4
+#define ON  0        // When the duty cycle is set to 0, the LED's turn on
+#define OFF 1000     // The duty cycle uses a resolution of 1000, and when it is fully on, the LED will be off.
 
-#define ON  0
-#define OFF 1000
-
-#define STAY_DELAY 10000
-#define FADE_DELAY 6
+#define STAY_DELAY 10000   // Once the LED's hit a steady state of on or off, they will stay bright this long.
+#define FADE_DELAY 6       // As the LED's are changing from ON to OFF, they will stay at each state for this long.
 
 
+
+/******************************** private function definitions **********************************/
 void SetDutyCycle(int Channel, signed int duty_cycle_value);
 
-//**********************************************************************************
-// This subroutine takes in a 10 bit number and sets the duty cycle register
-// for the PWM accordingly
-//**********************************************************************************
-void SetDutyCycle(int Channel, signed int duty_cycle_value)
+
+/******************************** private functions **********************************/
+/**********************************************************************************
+ *@brief This subroutine takes in a 10 bit number and sets the duty cycle register
+ * for the PWM accordingly
+ *
+ **********************************************************************************/
+void SetDutyCycle(
+   int Channel,                  /*<< [in] Which PWM signal are we using? RED, BLUE, GREEN? */
+   signed int duty_cycle_value   /*<< [in] What is the duty cycle you would like to set? */
+)
 {
-    if( Channel & RED){
+    if( Channel & RED)
+    {
         PWM1DCL = duty_cycle_value & 0xc0; //first set the 2 lsb bits
         PWM1DCH =  (duty_cycle_value >> 2);           //now set upper 8 msb bits
     }
-    if( Channel & BLUE){
+    if( Channel & BLUE)
+    {
         PWM4DCL = duty_cycle_value & 0xc0; //first set the 2 lsb bits
         PWM4DCH =  (duty_cycle_value >> 2);           //now set upper 8 msb bits
     }
-    if( Channel & GREEN){
+    if( Channel & GREEN)
+    {
         PWM3DCL = duty_cycle_value & 0xc0; //first set the 2 lsb bits
         PWM3DCH =  (duty_cycle_value >> 2);           //now set upper 8 msb bits
     }
 }
 
+
+
+/**
+ *@brief This is the main function of the project, set the port assignments
+ * than follow a hardcoded procedure for dimming and un-dimming the lighs
+ *
+ */
 int main(int argc, char** argv) {
-//    TRISA4=0; //Step 1. Disable PWM1 pin with TRIS
-//    PWM3CON=0; //Step 2. Clear the PWM1CON
-//    PR2=0xC7; //Step 3. Load the PR2 register with the PWM period value
-//    //TRISA3=1;
-//    PWM3DCH = 0; //Step 4. Clear PWM1DCH
-//    PWM3DCL = 0b00111111&PWM1DCL;//and bits (7-6) of PWM1DCL
-//    PIR1 = 0b11111101&PIR1;// Step 5. Clear the TMR2IF interrupt flag bit of the PIR1 register.
-//    T2CON=0x04; //Step 5b. Confirgure bits with Timer2 prescale value
-//    T2CON=0b00000100|T2CON; //Step 5c. Enable Timer2 by setting TMR2ON
-//    PWM3CON=0b10000000|PWM1CON;//step 6. Enable PWM output pin
-//    while(TMR2IF ==0); //Wait till overflow
-//                        //step 7. Enable the PWMx pin driver by clearing the tris
-//    PWM3CON=0b10000000|PWM1CON; // and setting PWMxOE
-//
-//    TMR2IF=0;
-//    PWM3CON=0xE0; //step 8. Configure PWM module by loading values
-
-
+   
     OSCCONbits.IRCF=0x0F;   //set OSCCON IRCF bits to select OSC frequency=16Mhz
     OSCCONbits.SCS=0x02;    //set the SCS bits to select internal oscillator block
     // OSCON should be 0x7Ah now.
@@ -110,20 +111,6 @@ int main(int argc, char** argv) {
                                 // PWM output on RA2.  If you want the PWM output on
                                 // RA5 instead then set this bit to a 1.
 
-    //******************************************************************************************
-    // PWM Period = (1/Fosc) * 4 * (TMR2 Prescaler)* (PR2+1)
-    //******************************************************************************************
-    // Here are sample PWM periods for different TMR2 Prescalar values for Fosc=16Mhz and PR2=255
-    //******************************************************************************************
-    // TMR2 Prescalar=1: PWM Period = (1/16000000)*4*1*256 = 64 us or 15.63 khz
-    // TMR2 Prescalar=4: PWM Period = (1/16000000)*4*4*256 = 256 us or 3.91 khz
-    // TMR2 Prescalar=16: PWM Period = (1/16000000)*4*16*256= 1.024 ms or .976 khz
-    // TMR2 Prescalar=64: PWM Period = (1/16000000)*4*64*256= 4.096 ms or .244 khz
-    //
-    // For this example we will choose the PWM period of 64us (15.63 kHz) so most people
-    // will not be able to hear it.
-    // ***** Setup PWM output
-
     TRISAbits.TRISA2 = 1;       // disable pwm pin output for the moment
     TRISAbits.TRISA4 = 1;
     TRISAbits.TRISA5 = 1;
@@ -142,39 +129,14 @@ int main(int argc, char** argv) {
     PWM4CON = 0b11000000;
 
 
-//    //OSCCON=0x7A;            // 16 MHz
-//    T2CON=0x04;             // was 04,
-//    while(TMR2IF==0);
-//    TMR2IF=0;
-//    PR2=0x7C;
     int Duty_cycle = 0;
     int Duty_cycle2 = 0;
-    //TRISA4 = 0;
     int light_delay = 3;
     
     int Curr_chan = RED;
 
     while(1)
-    {
-/*
-        SetDutyCycle(Curr_chan,(Duty_cycle)%1000);
-        Duty_cycle += 16;
-        DELAY(1000);
-//        LATA4 = 1;
-//        DELAY(1000);
-//        LATA4 = 0;
-        if(Duty_cycle > 900)
-        {
-            Duty_cycle = 0;
-            Curr_chan *= 2;
-            if(Curr_chan == 8)
-                Curr_chan = RED;
-        }
-
-
-        break;
-*/
-        
+    {   
         //Start White
         Curr_chan = BLUE||GREEN||RED;
         Duty_cycle = ON;
@@ -217,8 +179,8 @@ int main(int argc, char** argv) {
             SetDutyCycle(GREEN, Duty_cycle);
             DELAY( light_delay );
         }
-
     }
+    
     return (EXIT_SUCCESS);
 }
 
